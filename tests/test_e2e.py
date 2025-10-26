@@ -4,6 +4,17 @@ sys.path.append(str(pathlib.Path(__file__).parent.parent))
 from app.main import app
 from app.core.config import settings
 
+os.environ["CELERY_EAGER"] = "1"
+os.environ["REDIS_URL"] = "memory://"
+
+@pytest.fixture(autouse=True)
+def _force_eager_and_paths(tmp_path, monkeypatch):
+    from app.core.config import settings
+    monkeypatch.setattr(settings, "CELERY_EAGER", 1, raising=False)
+    monkeypatch.setattr(settings, "REDIS_URL", "memory://", raising=False)
+    monkeypatch.setattr(settings, "TEMP_DIR", str(tmp_path / "tmp_hachimi"), raising=False)
+    monkeypatch.setattr(settings, "PUBLISH_DIR", str(tmp_path / "publish"), raising=False)
+
 @pytest.fixture(autouse=True)
 def _isolate_tmp(tmp_path, monkeypatch):
     #猴子补丁重定向临时文件目录和发布目录到pytest临时路径
@@ -84,4 +95,17 @@ def test_stage_retry_and_uploads():
     #验证合成产物
     arts = client.get(f"/hachimi_ai_mad/projects/{project_id}/artifacts").json()
     assert "synth" in arts["stages"]
+    
+def test_admin_feature_requires_secret(monkeypatch):
+    monkeypatch.setattr(settings, "ADMIN_SECRET", "s3cr3t")
+    client = TestClient(app)
+
+    # 无密钥 403
+    r = client.post("/hachimi_ai_mad/admin/feature-project", json={"project_id":"p1","admin_secret":""})
+    assert r.status_code == 403
+
+    # 正确密钥 200
+    r = client.post("/hachimi_ai_mad/admin/feature-project", json={"project_id":"p1","admin_secret":"s3cr3t"})
+    assert r.status_code == 200
+    assert r.json().get("ok") is True
     

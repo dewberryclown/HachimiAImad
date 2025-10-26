@@ -15,6 +15,11 @@ from app.core.task import run_pipeline_task
 
 router = APIRouter()
 
+#健康检查节点
+@router.get("/healthz")
+def healthz():
+    return {"ok": True}
+
 @router.post("/hachimi_ai_mad/tasks/process", response_model=ProcessResponse, status_code=201)
 #!!!!!!!!!!确保task_id,project_id,job_id三者同步,避免404!!!!!!!!!!
 async def process(

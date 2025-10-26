@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "hachimi-mad"
+name = "hachimi_ai_mad"
 version = "0.1.0"
 description = "Hachimi MAD Open Platform - Part 1 async MVP"
 authors = ["Your Team"]

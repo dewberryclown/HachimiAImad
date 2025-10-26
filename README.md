@@ -1,69 +1,107 @@
-# 环境要求
+# Poetry / Python 环境 & 测试
 
-- Windows 10/11（64 位）
-- Python 3.11（64 位，安装时务必勾选「Add python.exe to PATH」）
-- 可选：`Poetry`（依赖管理，执行 `pip install poetry` 安装）、`Docker Desktop`（全栈模式需用）
+## 安装依赖（使用 pyproject.toml）
 
-## 快速启动
+poetry install
 
-### 方法 A：本地运行（无 Redis，任务同步执行）
+## 运行 E2E / 单测
 
-适合快速验证流程，无需额外服务。
+poetry run pytest -q tests/test_e2e.py
+poetry run pytest -q tests/test_validations.py
 
-1. **获取代码**
+## （可选）语法快检，能立刻发现粘贴截断/… 的问题
 
-   ```powershell
-   git clone <你的仓库地址> hachimi_ai_mad
-   cd hachimi_ai_mad
-   ```
+poetry run python -m compileall -q app
 
-2. **安装依赖并启动**
+## （开发）本地热启动 API
 
-   ```powershell
-   # 用 Poetry 安装（推荐）
-   poetry install
+poetry run uvicorn app.main:app --reload
+（如果临时用 pip 调包时用到过）
 
-   # 创建数据目录
-   mkdir -Force data\temp data\publish
+powershell
+复制
+编辑
 
-   # 设置环境变量并启动 API
-   $env:CELERY_EAGER=1; $env:TEMP_DIR="$PWD\data\temp"; $env:PUBLISH_DIR="$PWD\data\publish"
-   poetry run uvicorn app.main:app --host 127.0.0.1 --port 8000
-   ```
+## Windows 指定解释器装包
 
-3. **验证启动**
-   浏览器访问 `http://127.0.0.1:8000/livez`，返回 `{"ok": true}` 即成功。
+py -3.11 -m pip install -U python-multipart
 
-### 方法 B：Docker 全栈（含 Redis + Celery Worker）
+## 或（非首选）系统 pip
 
-适合需要观察异步任务队列的场景。
+pip install -U python-multipart
+（临时把环境变量打到当前 PowerShell 会话）
 
-1. **启动 Docker Desktop**
-   确保 WSL2 已启用（Docker 会自动引导配置）。
+$env:CELERY_EAGER = "1"
+$env:REDIS_URL = "memory://"
+Docker / Compose
 
-2. **一键启动所有服务**
+## 手动拉基础镜像（验证网络/镜像源）
 
-   ```powershell
-   docker compose up --build
-   ```
+docker pull python:3.11-slim
 
-3. **验证启动**
-   浏览器访问 `http://127.0.0.1:8000/docs`，可通过 Swagger 调试 API。
+## （排错时）也拉一个小镜像测试网络
 
-## 替代方案（不用 Poetry）
+docker pull busybox
 
-若不想用 Poetry，可通过 `venv + pip` 安装依赖：
+## 构建并启动（compose v2）
 
-```powershell
-py -3.11 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install fastapi uvicorn python-multipart celery
-# 之后按“方法 A”设置环境变量并启动 uvicorn
-```
+docker compose up --build
 
-## 常见问题
+## 只构建（强制更新、无缓存）
 
-- **端口冲突**：修改启动命令中的 `--port`（本地）或 Docker Compose 的 `ports` 映射。
-- **依赖安装慢**：配置国内 PyPI 镜像源（如清华源）后再执行 `poetry install` 或 `pip install`。
-- **任务状态异常**：确保 `CELERY_EAGER` 环境变量正确设置（本地模式需设为 `1`）。
+docker compose build --no-cache --pull
 
+## 清理构建缓存
+
+docker builder prune -f
+
+## （可选）直接构建镜像
+
+docker build -t hachimi-api .
+
+## （可选）强制平台为 linux/amd64
+
+docker build --platform linux/amd64 -t hachimi-api .
+
+## 登录 Docker Hub（减少匿名限流/鉴权问题）
+
+docker login
+
+## 退出登录
+
+docker logout
+容器冒烟检查：
+
+## 健康检查（你加了 /healthz 后）
+
+curl <http://localhost:8000/healthz>
+Docker Engine 镜像源（加速器）配置
+打开 Docker Desktop → Settings → Docker Engine，把 registry-mirrors 写入 JSON，保存并 Restart。
+
+{
+  "registry-mirrors": [
+    "https://docker.m.daocloud.io",
+    "https://hub-mirror.c.163.com",
+    "https://mirror.baidubce.com"
+  ],
+  "dns": ["8.8.8.8","1.1.1.1"]
+}
+（如果你在 compose 里曾见到 version: 已过时的警告，直接删掉 version: 字段即可。）
+
+WSL / 网络小修（仅在网络异常时用过）
+powershell
+复制
+编辑
+
+## 关闭 WSL、重置 Winsock（网络栈）
+
+wsl --shutdown
+netsh winsock reset
+运行/配置关键点备忘
+测试本机：CELERY_EAGER=1，且在 EAGER 分支使用 broker_url="memory://", result_backend="cache+memory://", task_store_eager_result=True（已写进 celery_app.py）。
+
+Docker/Compose：.env 里 CELERY_EAGER=0、REDIS_URL=redis://redis:6379/0；docker compose up --build 启动 api + worker + redis。
+
+基础镜像：最终选用 python:3.11-slim（你本机已能直接 docker pull 成功）。
+
+排错套路：docker compose build --no-cache --pull → 仍不行就 docker builder prune -f → 指定 --platform linux/amd64 → 检查镜像源/登录。
